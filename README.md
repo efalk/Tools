@@ -20,6 +20,7 @@ Convert
     +-----+
 
 to
+
     ┌─────┐
     │ foo │
     └─────┘
@@ -28,7 +29,7 @@ Pipe your crude ascii art through this script to convert to Unicode
 box-drawing graphics. Does not take any command lines.
 
 
-## toboxes
+## totree
 
 Add decorations to an indented tree.
 
@@ -77,7 +78,7 @@ crude ascii art.
     │   ├── index
     │   ├── info
     │   │   ╰── exclude
-    │   ├── packed-refs
+    │   ╰── packed-refs
     ├── LICENSE
     ├── README.md
     ├── toboxes*
