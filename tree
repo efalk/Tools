@@ -1,0 +1,87 @@
+#!/usr/bin/python
+# -- coding: utf-8 --
+
+import os
+import sys
+import getopt
+import stat
+
+showdots = False
+asciionly = False
+symlinks = False
+bardash = '├── '
+lastdash = '╰── '
+baronly = '│   '
+
+def main():
+  global showdots, symlinks
+  opts,args = getopt.getopt(sys.argv[1:], "aAh")
+  for opt,value in opts:
+    if opt == '-a': showdots = True
+    elif opt == '-A': setAscii()
+    elif opt == '-h': symlinks = True
+  if not args: args = ['.']
+  for path in args:
+    tree(os.path.dirname(path), [os.path.basename(path)], '', 0)
+  return 0
+
+def tree(path, files, pfx1, depth):
+  global showdots, bardash, lastdash, baronly, symlinks
+  # path is the full path to the directory we're printing
+  # files is the list of files in the directory
+  # pfx1 is the sequence of "|   " leading up to this level of nesting
+  # depth is the level of nesting
+  last = len(files)-1
+  pfx2 = bardash if depth else ''
+  for i,f in enumerate(files):
+    fullpath = os.path.join(path, f)
+    islast = i == last
+    if depth and islast:
+      # Change that final '|' to '╰'
+      pfx2 = lastdash
+    pfx = pfx1 + pfx2
+    try:
+      statbuf = os.lstat(fullpath)
+      mode = statbuf.st_mode
+    except OSError, e:
+      mode = stat.S_IFREG
+    if stat.S_ISLNK(mode):
+      path2 = os.readlink(fullpath)
+      print pfx + f, '->', path2
+      if symlinks and os.path.isdir(path2):
+	showSubdir(path2, f, pfx, pfx1, depth, islast)
+    elif stat.S_ISDIR(mode):
+      print pfx + f
+      showSubdir(fullpath, f, pfx, pfx1, depth, islast)
+    else:
+      if mode & 0111:
+	print pfx + f + '*'
+      else:
+	print pfx + f
+
+def showSubdir(path, f, pfx, pfx1, depth, islast):
+  global showdots
+  subfiles = os.listdir(path)
+  if not showdots:
+    subfiles = filter(lambda x:not x.startswith("."), subfiles)
+  subfiles.sort()
+  if not depth: pfx3 = ''
+  elif islast: pfx3 = pfx1 + '    '
+  else: pfx3 = pfx1 + baronly
+  tree(path, subfiles, pfx3, depth+1)
+
+def setAscii():
+  global bardash, lastdash, baronly
+  asciionly = True
+  bardash = '|-- '
+  lastdash = '`-- '
+  baronly = '|   '
+
+if __name__ == "__main__":
+  try:
+    sys.exit(main())
+  except IOError, e:
+    if e.errno == 32: sys.exit(0)
+    raise
+  except KeyboardInterrupt, e:
+    sys.exit(0)

@@ -1,0 +1,102 @@
+#!/usr/bin/python
+# -- coding: utf-8 --
+
+'''Convert
+
+  +-----+
+  | foo |
+  +-----+
+to
+  ┌─────┐
+  │ foo │
+  └─────┘
+'''
+
+import os
+import sys
+import getopt
+import stat
+
+
+def main():
+  global bardash, lastdash, baronly, dash
+  lines = sys.stdin.readlines()
+  lines = [line.decode('utf-8') for line in lines]
+  # easy part
+  lines = [line.replace(u'-',u'─') for line in lines]
+  lines = [line.replace(u'|',u'│') for line in lines]
+
+  # hard part, '+' gets converted to one of several glpyhs, depending
+  # on what surrounds it
+  lines2 = []
+  for row,line in enumerate(lines):
+    l2 = []
+    for col,c in enumerate(line):
+      if c == u'+':
+	l2.append(getGlyph(lines,row,col))
+      elif c == u'│':
+	l2.append(getGlyphV(lines,row,col))
+      elif c == u'─':
+	l2.append(getGlyphH(lines,row,col))
+      elif c == u'`':
+	l2.append(getGlyphTic(lines,row,col))
+      else:
+	l2.append(c)
+    lines2.append(u''.join(l2))
+  lines = lines2
+
+  for line in lines:
+    print line.encode('utf-8'),
+
+def getGlyph(lines, row, col):
+  # Replace '+' with one of the sixteen glyphs shown below
+  # Identify the four characters that surround this location
+  t = getc(lines, row-1, col)
+  l = getc(lines, row, col-1)
+  r = getc(lines, row, col+1)
+  b = getc(lines, row+1, col)
+  tlrb = 0
+  if t in u'│+': tlrb += 1
+  if l in u'─+': tlrb += 2
+  if r in u'─+': tlrb += 4
+  if b in u'│+': tlrb += 8
+  return u'+╵╴┘╶└─┴╷│┐┤┌├┬┼'[tlrb]
+
+def getGlyphV(lines, row, col):
+  # Like getGlyph(), but modifies '|'
+  l = getc(lines, row, col-1)
+  r = getc(lines, row, col+1)
+  lr = 0
+  if l in u'─+': lr += 1
+  if r in u'─+': lr += 2
+  return u'│┤├┼'[lr]
+
+def getGlyphH(lines, row, col):
+  # Like getGlyph(), but modified '-'
+  t = getc(lines, row-1, col)
+  b = getc(lines, row+1, col)
+  tb = 0
+  if t in u'│+': tb += 1
+  if b in u'│+': tb += 2
+  return u'─┴┬┼'[tb]
+
+def getGlyphTic(lines, row, col):
+  # Handle "`"
+  t = getc(lines, row-1, col)
+  if t in u'│+': return u'╰'
+  return u'`'
+
+def getc(lines, row, col):
+  if row < 0 or col < 0 or row >= len(lines) or col >= len(lines[row]):
+    return ' '
+  else:
+    return lines[row][col]
+
+if __name__ == "__main__":
+  try:
+    sys.exit(main())
+  except IOError, e:
+    if e.errno == 32: sys.exit(0)
+    raise
+  except KeyboardInterrupt, e:
+    sys.exit(0)

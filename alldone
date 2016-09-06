@@ -1,0 +1,37 @@
+#!/bin/bash
+
+msg='all done'
+quiet=false
+if [ "$1" = '-q' ]; then quiet=true; shift; fi
+if [ $# -gt 0 ]; then msg="$*"; fi
+
+echo -ne "\x1b]0;$msg\a"
+if [ -x /usr/bin/zenity ]; then
+  unset WINDOWID
+  exec zenity --info --text="$msg"
+elif [ -x /usr/bin/xmessage ]; then
+  exec xmessage -nearmouse "$msg"
+elif [ -x /usr/bin/osascript ]; then
+  if ! $quiet; then
+    #say $msg
+    say "done" &
+  fi
+
+  #osascript -e "tell application \"SystemUIServer\"
+  #display dialog \"$msg\"
+  #end
+
+  #activate application (path to frontmost application as text)"
+  #osascript -e "tell application (path to frontmost application as text)
+  #display dialog \"$msg\"
+  #end"
+
+  #osascript -e "tell application \"System Events\"
+  #display dialog \"$msg\" buttons {\"OK\"}
+  #end"
+
+  osascript -e "tell application \"System Events\" to display dialog \"$msg\" buttons \"OK\" default button 1 with title \"All done\"" > /dev/null
+
+else
+  echo $msg
+fi

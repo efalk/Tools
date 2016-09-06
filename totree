@@ -1,0 +1,143 @@
+#!/usr/bin/python
+# -- coding: utf-8 --
+
+'''Add decorations to an indented tree.
+
+    foo
+       bar
+	  fee
+	    fie
+	      foe
+	  quux
+       blah
+	  bing
+
+becomes
+
+    foo
+    ├─ bar
+    │  ├─ fee
+    │  │  └─fie
+    │  │    └─foe
+    │  └─ quux
+    └─ blah
+       └─ bing
+'''
+
+import os
+import sys
+import getopt
+import stat
+
+asciionly = False
+bardash = '├'
+lastdash = '╰'
+baronly = '│'
+dash = '─'
+
+baseIndent = -1
+
+# Each node in the tree contains an indentation level, a string,
+# a flag indicating it's the last child, and a list of children
+# The "root" is a list of top-level nodes (ideally just one)
+class Node(object):
+  def __init__(self, label, indent):
+    self.parent = None
+    self.label = label.strip()
+    self.indent = indent
+    self.children = []
+  def add(self, node):
+    node.parent = self
+    self.children.append(node)
+  def __repr__(self):
+    return 'Node("%s",%d)' % (self.label, self.indent)
+  def dump(self, pfx, cpfx):
+    print pfx + self.label
+    if self.children:
+      lastChild = self.children[-1]
+      for child in self.children:
+	last = child == lastChild
+	pfx2 = computePfx(child.indent - self.indent, last)
+	pfx3 = computeCpfx(child.indent - self.indent, last)
+	child.dump(cpfx + pfx2, cpfx + pfx3)
+
+def main():
+  global baseIndent, bardash, lastdash, baronly, dash
+  opts,args = getopt.getopt(sys.argv[1:], "A")
+  for opt,value in opts:
+    if opt == '-A': setAscii()
+
+  baseIndent = -1
+  curIndent = -1
+  root = parent = Node("", -1)
+  prevNode = None
+
+  for line in sys.stdin:
+    indent = getIndent(line)
+    if baseIndent < 0:
+      baseIndent = indent
+      curIndent = 0
+    indent -= baseIndent
+    if indent < 0: indent = 0
+    node = Node(line, indent)
+    if indent == curIndent:
+      parent.add(node)
+    elif prevNode and indent > curIndent:
+      # push
+      parent = prevNode
+      parent.add(node)
+    elif parent and indent < curIndent:
+      # pop
+      while indent < curIndent:
+	parent = parent.parent
+	curIndent = parent.children[0].indent
+      parent.add(node)
+    else:
+      print 'something went wrong'
+      print '   node:', node
+      print '   prev:', prevNode
+      print ' parent:', parent
+      print ' indent:', indent
+      print '    cur:', curIndent
+    prevNode = node
+    curIndent = indent
+
+  pfx = ' '*baseIndent
+  for node in root.children:
+    node.dump(pfx, pfx)
+
+
+def setAscii():
+  global bardash, lastdash, baronly
+  asciionly = True
+  bardash = '|'
+  lastdash = '`'
+  baronly = '|'
+  dash = '-'
+
+def getIndent(line):
+  return len(line) - len(line.lstrip(' '))
+
+def computePfx(indent, last):
+  '''Return prefix to be used for a child node'''
+  rval = lastdash if last else bardash
+  if indent >= 3:
+    return rval + dash*(indent - 2) + ' '
+  elif indent == 2:
+    return rval + dash
+  else:
+    return rval
+
+def computeCpfx(indent, last):
+  '''Return prefix to be used for grandchildren'''
+  rval = ' ' if last else baronly
+  return rval + ' '*(indent-1)
+
+if __name__ == "__main__":
+  try:
+    sys.exit(main())
+  except IOError, e:
+    if e.errno == 32: sys.exit(0)
+    raise
+  except KeyboardInterrupt, e:
+    sys.exit(0)
