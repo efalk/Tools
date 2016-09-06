@@ -1,0 +1,11 @@
+#!/bin/sh
+
+# Eliminate trailing blanks from files
+
+if [ $# = 0 ]; then
+  sed -e 's/[ 	][ 	]*$//'
+else
+  for file in "$@"; do
+    sed -e 's/[ 	][ 	]*$//' -i.bak "$file"
+  done
+fi
