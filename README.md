@@ -26,7 +26,7 @@ to
     └─────┘
 
 Pipe your crude ascii art through this script to convert to Unicode
-box-drawing graphics. Does not take any command lines.
+box-drawing graphics. Does not take any command line arguments.
 
 
 ## totree
