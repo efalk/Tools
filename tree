@@ -22,6 +22,7 @@ def main():
     elif opt == '-h': symlinks = True
   if not args: args = ['.']
   for path in args:
+    if path.endswith('/'): path = path[:-1]
     tree(os.path.dirname(path), [os.path.basename(path)], '', 0)
   return 0
 
