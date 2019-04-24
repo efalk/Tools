@@ -10,6 +10,7 @@ Name | What it is
 [tree](#tree) | tree(1) command for operating systems that don't have it
 [alldone](#alldone) | Generate an "All done" popup on your screen.
 [notrail](#notrail) | Strip trailing blanks from file(s).
+[wavtags](#wavtags) | Edit the "INFO" tags in a .wav file
 
 ## toboxes
 
@@ -115,3 +116,9 @@ Strip trailing blanks from files. With no arguments, pipes stdin => stdout.
     notrail [files...]
 
 
+## wavtags
+
+Edit the "INFO" tags in a .wav file. Run with "--help" for documentation.
+
+Includes libwav.[ch], a simple utility library for manipulating the
+chunks in a .wav (or any Microsoft RIFF) file.
