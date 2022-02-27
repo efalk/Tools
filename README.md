@@ -202,7 +202,12 @@ See the comments in superlog.h for more detailed documentation.
 
 ### Advanced usage
 
-You can configure logging and then use `SuperLog()` to fork the
+Libsuperlog allows you to write your own version of the superlog
+program for more flexibility. superlog.c is not much more than a
+convenience wrapper around libsuperlog. Feel free to use superlog.c
+as a guide to writing your own custom logging.
+
+You can configure logging and then call `SuperLog()` to fork the
 program under test for fine-grained control over the logging process.
 You must call `LogBufferAlloc()` and `LogBufferAdd()` to configure
 at least one log buffer before calling `SuperLog()`.

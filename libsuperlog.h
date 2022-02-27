@@ -10,6 +10,45 @@ typedef int bool;
 #define	MAX_FDS	8
 
 
+
+/* Definitions for superlog child process */
+
+typedef struct LogMsg LogMsg;
+typedef struct LogBuffer LogBuffer;
+
+
+/**
+ * Set up superlog output on specified fd. E.g. `superlogInit(3)`
+ * will cause subsequent superlog messages to be output on fd 3. Do
+ * this very early in your program's execution to make sure that the
+ * chosen fd is still free.
+ */
+extern void superlogInit(int fd);
+
+/**
+ * Like printf, but output goes to the fd specified in superlogInit().
+ * If superlogInit() has not been called, nothing happens.
+ */
+extern void superlog(const char *fmt, ...);
+
+/**
+ * Like `superlog()`, except that it accepts a va_list instead.
+ */
+extern void vsuperlog(const char *fmt, va_list ap);
+
+/**
+ * Trigger superlog to dump the logs.
+ * Does this by sending SIGUSR1 to the parent
+ * process. Call this at your own risk when not
+ * running under superlog.
+ */
+extern void superlogDump();
+
+
+
+
+/* Definitions for superlog parent process */
+
 /**
  * This is the usual main entry point to superlog.
  * Caller should first create as many LogBuffers as are appropriate
@@ -37,23 +76,6 @@ typedef int bool;
 extern int SuperLog(int *fds, int nfd, char **argv,
     int (*func)(int argc, char **argv), const char *file);
 
-
-
-/* Definitions for superlog child process */
-
-typedef struct LogMsg LogMsg;
-typedef struct LogBuffer LogBuffer;
-
-
-extern void superlogInit(int fd);
-extern void superlog(const char *fmt, ...);
-extern void vsuperlog(const char *fmt, va_list ap);
-extern void superlogDump();
-
-
-
-
-/* Definitions for superlog parent process */
 
 extern bool timestamps;
 extern bool showfds;
