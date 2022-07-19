@@ -12,10 +12,6 @@
 #include "libsuperlog.h"
 #include <sys/select.h>
 
-typedef int bool;
-#define false 0
-#define true 1
-
 static bool superlog_enabled = false;
 static int log_fd = -1;
 static FILE *ofile = NULL;

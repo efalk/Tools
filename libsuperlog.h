@@ -2,12 +2,14 @@
 #define	_SUPERLOG_H
 
 #include <stdarg.h>
-
-typedef int bool;
-#define false 0
-#define true 1
+#include <stdbool.h>
 
 #define	MAX_FDS	8
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 
 
@@ -58,7 +60,7 @@ extern void superlogDump();
  * ExcludeAdd() and/or ExcludeAddFile(), and then call
  * this function.
  *
- * This function returns when the child exits or on error, it will
+ * This function returns when the child exits or on error. It will
  * either exec the program of your choice with the arguments you
  * provide, or call a function you pass in, with the arguments argc,
  * argv.
@@ -105,7 +107,11 @@ extern LogBuffer *LogBufferAlloc(const char *pat, char type, long limit);
 extern void LogBufferAdd(LogBuffer *lb);
 
 /**
- * Add one line to this logbuffer
+ * Add one line to this logbuffer. Not normally called by client
+ * code, but you can use it to annotate the logs if you like.
+ * The sequence number is a global counter used to keep the various
+ * log buffers synchronized when they're written out. See the
+ * source code to LogParent()
  */
 extern void LogBufferAppend(LogBuffer *, long seq, const char *line, short fd);
 
@@ -138,7 +144,7 @@ extern bool ExcludeTest(const char *line);
  * Once the trigger is seen 'count' times, and then 'countdown' log
  * events have been seen, the logs are dumped and then disabled.
  *
- * Once a trigger has occurred, you need to call this again to
+ * Once a trigger has occurred, you can call this again to
  * "re-arm" it.
  */
 extern void TriggerParams(int count, int countdown);
@@ -172,5 +178,9 @@ extern const char * TriggerTest(const char *line);
  */
 extern void LogParent(int ofds[MAX_FDS], int ifds[MAX_FDS], int nfds);
 
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif	/* _SUPERLOG_H */
