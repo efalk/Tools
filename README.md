@@ -5,12 +5,32 @@ access them from anywhere, and to share with interested parties.
 
 Name | What it is
 ---- | ----
+[ps2book](#ps2book) | Re-arrange a postscript file into signatures for printing
 [toboxes](#toboxes) | Convert ascii-art boxes to unicode art
 [totree](#totree) | Add leader lines to indented text for readability
 [tree](#tree) | tree(1) command for operating systems that don't have it
 [alldone](#alldone) | Generate an "All done" popup on your screen.
 [notrail](#notrail) | Strip trailing blanks from file(s).
 [superlog](#superlog) | Filtering and processing of verbose log output
+
+## ps2book
+
+Accepts a postscript file and re-arranges the pages to output four
+pages per physical sheet of paper (2 pages/side). The output can then
+be folded in half "folio" style to make a booklet.
+
+This is equivalent to combining the psutils "psbook" and "psnup"
+programs, but is simpler and works with different page sizes (see
+https://github.com/rrthomas/psutils/issues/59).
+
+It can also auto-rotate pages to fit if that is called for.
+
+By default, it generates a single signature which is a stack
+of papers you fold together to make a booklet. If there are very
+many pages, you can use the '-s' option to batch pages together,
+e.g. "-s 32" would batch 32 pages at a time into 8-sheet signatures.
+
+Run with "--help" for full options.
 
 ## toboxes
 
