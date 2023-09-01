@@ -80,7 +80,6 @@ class Page(object):
             self.offset, self.size)
 
 
-
 def main():
     global sigsize, paper, autoRotate
 
@@ -97,6 +96,7 @@ def main():
                 return 0
             elif flag == '-s':
                 sigsize = getInt(value)
+                if sigsize: sigsize = round_up(sigsize, 4)
             elif flag == '-p':
                 paper = value
             elif flag == '-r':
@@ -114,9 +114,7 @@ def main():
     if opaper is None:
         print("Paper size %s is invalid; use --help for more info" % paper, file=sys.stderr)
         return 2
-    paper = list(opaper)   # Switch paper to landscape
-    paper.reverse()
-    paper = tuple(paper)
+    paper = opaper[::-1]   # Switch paper to landscape
 
     try:
         ifile = open(ifilename, "r")
@@ -133,9 +131,8 @@ def main():
             print("Unable to open '%s', %s" % (ofilename, e), file=sys.stderr)
             return 3
 
-
     # Analyze the input file, get info on all pages
-    pages = analyze(ifile)
+    pages, trailer = analyze(ifile)
     #print(pages)
     if sigsize is None:
         sigsize = round_up(len(pages), 4)
@@ -145,14 +142,15 @@ def main():
     pages = rearrange(pages, sigsize)
 
     # Output the modified file
-    generate(ifile, ofile, pages, paper)
+    generate(ifile, ofile, pages, trailer, paper)
 
     return 0
 
 
 def analyze(ifile):
     """Examine input file to determine how many pages it has and what
-    their dimensions are."""
+    their dimensions are. Returns a list of Page objects and the offset of
+    the trailer, if any"""
     ifile.seek(0)
     npages = None
     pages = []
@@ -161,6 +159,7 @@ def analyze(ifile):
     inprolog = True
     offset = 0
     page = None
+    trailer = None
 
     def endPage():
         """Called when we know we've reached the end of a page"""
@@ -195,7 +194,10 @@ def analyze(ifile):
                 pageno = getInt(line[2])
                 if pageno is not None:
                     page.pageno = pageno
-        elif line.startswith('%%Trailer') or line.startswith('%%EOF'):
+        elif line.startswith('%%Trailer'):
+            trailer = offset
+            break
+        elif line.startswith('%%EOF'):
             break
         elif page:
             if line.startswith('%%PageBoundingBox:'):
@@ -205,7 +207,7 @@ def analyze(ifile):
     if page:
         endPage()
         page = None
-    return pages
+    return pages, trailer
 
 
 def rearrange(pages, sigsize):
@@ -284,12 +286,17 @@ end
 %%EndProcSet
 """
 
-def generate(ifile, ofile, pages, paper):
+def generate(ifile, ofile, pages, trailer, paper):
     generateProlog(ifile, ofile, pages, paper)
 
     # Generate output 2-by-2
     for i in range(0, len(pages), 2):
         generatePage(ifile, ofile, pages[i:i+2], i//2+1, paper)
+
+    if trailer:
+        copyTrailer(ifile, ofile, trailer)
+
+    print("%%EOF", file=ofile)
 
 
 def generateProlog(ifile, ofile, pages, paper):
@@ -309,6 +316,7 @@ def generateProlog(ifile, ofile, pages, paper):
     copyProlog(ifile, ofile)
 
     print("%%EndProlog", file=ofile)
+
 
 def copyProlog(ifile, ofile):
     """Copy the prolog from the input file to the output file"""
@@ -342,6 +350,7 @@ def generatePage(ifile, ofile, pages, pageno, paper):
 
     #print("EndEPSF", file=ofile)
     print("showpage", file=ofile)
+
 
 def halfpage(ifile, ofile, page, pbox):
     """Display this input page in the given bounding box."""
@@ -404,6 +413,7 @@ def rect(llx, lly, urx, ury, ofile):
     print("%g %g moveto %g %g lineto %g %g lineto %g %g lineto closepath" % \
         (llx,lly, urx,lly, urx,ury, llx,ury), file=ofile)
 
+
 def copyPage(ifile, ofile, page):
     # Copy input to output, disregard first %%Page directive. Stop
     # at next %%Page or %%Trailer
@@ -420,10 +430,24 @@ def shouldRotate(pwid, phgt, wid, hgt):
         (phgt >= pwid and wid > hgt or \
          pwid >= phgt and hgt > wid)
 
+
+def copyTrailer(ifile, ofile, trailer):
+    """Copy the trailer from the input file to the output file"""
+    ifile.seek(trailer)
+    inProlog = False
+    for line in ifile:
+        line = line.rstrip()
+        if line.startswith('%%EOF'):
+            return
+        print(line, file=ofile)
+
+
+
 # UTILITIES
 
 
 def parseNumbers(line):
+    """Extract a list of numbers from a line, e.g. "%%%BoundingBox 0 0 612 792"."""
     line = line.split()[1:]
     line = list(map(getFloat, line))
     if None in line:
@@ -471,6 +495,7 @@ def parsePaper(paper):
     return paper
 
 def parseDim(dim):
+    """Parse a dimension, e.g. "11in" or "200mm"."""
     if dim.endswith('mm'):
         dim = getFloat(dim[:-2])
         return dim * MM2P if dim is not None else None
@@ -480,23 +505,30 @@ def parseDim(dim):
     if dim.endswith('in'):
         dim = getFloat(dim[:-2])
         return dim * IN2P if dim is not None else None
+    return getFloat(dim)
 
 def getFloat(s):
+    """Convert string to float, return None instead of exception on error."""
     try:
         return float(s)
     except:
         return None
 
 def getInt(s):
+    """Convert string to int, return None instead of exception on error."""
     try:
         return int(s)
     except:
         return None
 
 def round_down(n,r):
+    """Truncate 'n' to the next lower multiple of 'r', which must be a
+    power of two."""
     return ((n) & ~((r)-1))
 
 def round_up(n,r):
+    """Round 'n' to the next higher multiple of 'r', which must be a
+    power of two."""
     return round_down((n)+(r)-1,(r))
 
 
