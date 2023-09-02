@@ -301,6 +301,7 @@ def generate(ifile, ofile, pages, trailer, paper):
 
 def generateProlog(ifile, ofile, pages, paper):
     print("%!PS-Adobe-3.0", file=ofile)
+    print("%%%%DocumentMedia: plain %g %g 0 () ()" % paper, file=ofile)
     print("%%%%BoundingBox: 0 0 %d %d" % paper, file=ofile)
     print("%%%%HiResBoundingBox: 0 0 %.2f %.2f" % paper, file=ofile)
     print("%%Creator: ps2book.py", file=ofile)
