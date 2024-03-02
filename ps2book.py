@@ -20,6 +20,11 @@ Usage:  ps2book [options] infile.ps [outfile.ps]
         -s n            Pages/signature, should be a multiple of 4
         -p paper        Specify output paper, see below; default is letter
         -r              Rotate pages for best fit as needed
+        -S              Add staple marks on outermost page of each signature
+        -C              Add centerline on innermost page of each signature
+        -q              quiet; no status report
+
+Default is to output to stdout.
 
 Without -s, default is to generate a single signature for all pages.
 
@@ -67,8 +72,12 @@ if PY3:
 sigsize = None      # Pages per signature, must be multiple of 4
 paper = 'letter'    # Eventually replaced with (w,h) in postscript points
 autoRotate = False  # Rotate to fit
+staples = False     # Add staple marks
+centerline = False  # Add centerline marks
+quiet = False
 
 class Page(object):
+    """Represents one page of the input."""
     def __init__(self, offset):
         self.offset = offset
         self.size = 0
@@ -81,12 +90,12 @@ class Page(object):
 
 
 def main():
-    global sigsize, paper, autoRotate
+    global sigsize, paper, autoRotate, staples, centerline, quiet
 
     # Get arguments with getopt
     long_opts = ['help', 'version']
     try:
-        (optlist, args) = getopt.getopt(sys.argv[1:], 'hs:p:rV', long_opts)
+        (optlist, args) = getopt.getopt(sys.argv[1:], 'hs:p:rVSC', long_opts)
         for flag, value in optlist:
             if flag in ('-h', "--help"):
                 print(usage)
@@ -101,6 +110,12 @@ def main():
                 paper = value
             elif flag == '-r':
                 autoRotate = True
+            elif flag == '-S':
+                staples = True
+            elif flag == '-C':
+                centerline = True
+            elif flag == '-q':
+                quiet = True
     except getopt.GetoptError as e:
         print(e)
         sys.exit(2)
@@ -133,16 +148,22 @@ def main():
 
     # Analyze the input file, get info on all pages
     pages, trailer = analyze(ifile)
+    np = len(pages)
     #print(pages)
     if sigsize is None:
         sigsize = round_up(len(pages), 4)
 
     # Rearrange in book order, folio.
     # TODO: quatro
-    pages = rearrange(pages, sigsize)
+    # Obtain list of signatures, each of which is a list of
+    # output pages.
+    signatures = rearrange(pages, sigsize)
 
     # Output the modified file
-    generate(ifile, ofile, pages, trailer, paper)
+    generate(ifile, ofile, signatures, trailer, paper)
+
+    if not quiet:
+        print(f"Done, {np} pages output to {len(signatures)} signatures", file=sys.stderr)
 
     return 0
 
@@ -214,9 +235,12 @@ def rearrange(pages, sigsize):
     """Take the input pages, in batches of size sigsize,
     and re-arrange them in book signature order. If the last
     signature is short, reduce its size and pad with None
-    as needed"""
-    opages = []
+    as needed.
+    Return list of signatures, each of which is a list of
+    output pages."""
+    signatures = []
     while pages:
+        opages = []
         signature = pages[:sigsize]
         del pages[:sigsize]
         if len(signature) < sigsize:
@@ -226,7 +250,8 @@ def rearrange(pages, sigsize):
             opages.append(getSigPage(signature, i))
             opages.append(getSigPage(signature, i+1))
             opages.append(getSigPage(signature, sigsize-2-i))
-    return opages
+        signatures.append(opages)
+    return signatures
 
 def getSigPage(signature, idx):
     return signature[idx] if idx < len(signature) else None
@@ -286,12 +311,17 @@ end
 %%EndProcSet
 """
 
-def generate(ifile, ofile, pages, trailer, paper):
-    generateProlog(ifile, ofile, pages, paper)
+def generate(ifile, ofile, signatures, trailer, paper):
+    generateProlog(ifile, ofile, signatures, paper)
 
     # Generate output 2-by-2
-    for i in range(0, len(pages), 2):
-        generatePage(ifile, ofile, pages[i:i+2], i//2+1, paper)
+    for pages in signatures:
+        np = len(pages)
+        for i in range(0, np, 2):
+            isfirst = i==0
+            islast = i >= np-2
+            generatePage(ifile, ofile, pages[i:i+2], i//2+1, paper,
+                isfirst, islast)
 
     if trailer:
         copyTrailer(ifile, ofile, trailer)
@@ -299,14 +329,15 @@ def generate(ifile, ofile, pages, trailer, paper):
     print("%%EOF", file=ofile)
 
 
-def generateProlog(ifile, ofile, pages, paper):
+def generateProlog(ifile, ofile, signatures, paper):
     print("%!PS-Adobe-3.0", file=ofile)
     print("%%%%DocumentMedia: plain %g %g 0 () ()" % paper, file=ofile)
     print("%%%%BoundingBox: 0 0 %d %d" % paper, file=ofile)
     print("%%%%HiResBoundingBox: 0 0 %.2f %.2f" % paper, file=ofile)
     print("%%Creator: ps2book.py", file=ofile)
     print("%%LanguageLevel: 2", file=ofile)
-    print("%%%%Pages: %d 0" % (len(pages)//2), file=ofile)
+    np = sum(len(pages) for pages in signatures)
+    print("%%%%Pages: %d 0" % (np//2), file=ofile)
     print("%%EndComments", file=ofile)
     print("%%BeginProlog", file=ofile)
 
@@ -333,7 +364,7 @@ def copyProlog(ifile, ofile):
             print(line, file=ofile)
 
 
-def generatePage(ifile, ofile, pages, pageno, paper):
+def generatePage(ifile, ofile, pages, pageno, paper, isfirst, islast):
     p0 = pages[0] if len(pages) > 0 else None
     p1 = pages[1] if len(pages) > 1 else None
     print('%%%%Page: "(%d,%d)" %d' % \
@@ -350,7 +381,12 @@ def generatePage(ifile, ofile, pages, pageno, paper):
         halfpage(ifile, ofile, p1, [pwid/2, 0, pwid, phgt])
 
     #print("EndEPSF", file=ofile)
-    print("showpage", file=ofile)
+    if staples and isfirst:
+        lineInPage(ofile, (.5,.1,.5,.15), paper)
+        lineInPage(ofile, (.5,.85,.5,.9), paper)
+    if centerline and islast:
+        lineInPage(ofile, (.5,.25,.5,.75), paper)
+    print("showpage\n", file=ofile)
 
 
 def halfpage(ifile, ofile, page, pbox):
@@ -409,6 +445,14 @@ def halfpage(ifile, ofile, page, pbox):
 
     print("PS2BookSaved restore", file=ofile)
     print(file=ofile)
+
+def lineInPage(ofile, endpoints, paper=None):
+    """Draw a line between the given endpoints. Endpoints are in [0 1] and so
+    are optionally scaled up to the dimensions of the paper first."""
+    if paper is not None:
+        endpoints = (paper[0] * endpoints[0], paper[1] * endpoints[1],
+                     paper[0] * endpoints[2], paper[1] * endpoints[3])
+    print("0 setlinewidth newpath %.1f %.1f moveto %.1f %.1f lineto stroke" % endpoints, file=ofile)
 
 def rect(llx, lly, urx, ury, ofile):
     print("%g %g moveto %g %g lineto %g %g lineto %g %g lineto closepath" % \
