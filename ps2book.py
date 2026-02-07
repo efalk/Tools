@@ -17,7 +17,8 @@ Usage:  ps2book [options] infile.ps [outfile.ps]
 
         -h --help       This text
         -V --version    Version
-        -s n            Pages/signature, should be a multiple of 4
+        -s n            Pages/signature, (will rounded up to a multiple of 4)
+        -Q              Quarto; 4 pages per side of each sheet (see below)
         -p paper        Specify output paper, see below; default is letter
         -r              Rotate pages for best fit as needed
         -S              Add staple marks on outermost page of each signature
@@ -28,16 +29,30 @@ Default is to output to stdout.
 
 Without -s, default is to generate a single signature for all pages.
 
-Output paper can be a0-a10, b0-b10, letter, legal, tabloid, 11x17, WxH.
+Output paper can be a0-a10, b0-b10, letter, legal, tabloid, 11x17, or WxH.
 
-W and H are postscript points, NNcm, NNmm, or NNin
+W and H are postscript points, NNcm, NNmm, or NNin. E.g. "612x792"
+or "8.5inx11in".
 
-Output pages will be landscape orientation; it is assumed your
-printer can handle this and will print the duplex pages correctly.
+Folio: The default. Two pages per side of physical sheet. Output
+pages will be landscape orientation; it is assumed your printer can
+handle this and will print the duplex pages correctly.
 
 (On a Mac, in the print dialog, select "Two-Sided", select the
 appropriate page size, adjust scale if needed to fill the page.  Go
 to the "Layout" dropdown and select "Two-Sided: Short-Edge binding".)
+
+Quarto: Four pages per side of physical sheet; the two pages on
+top are upside-down. First fold the page along the horizontal axis,
+then again along the vertical axis, staple in the center, then
+slit along the top edge to free the pages. For quarto, -s will be
+rounded up to a multiple of 8.
+
+Note that larger signatures can be unwieldy to fold and staple,
+especially with quarto. You might consider consider using -s 1
+so that each signature is a single sheet of paper, and then find
+another way to bind them together; that's how e.g. Shakespeare's
+quartos were done.
 
 Exit codes:
 
@@ -46,9 +61,9 @@ Exit codes:
         3 - error
 """
 
-VERSION = "1.0.0"
+VERSION = "2.0.0"
 COPYRIGHT = "ps2book " + VERSION + """
-Copyright (c) Edward Falk, Reuben Thomas 2023.
+Copyright © Edward Falk, Reuben Thomas 2023,2026.
 License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.
 This is free software: you are free to change and redistribute it.
 There is NO WARRANTY, to the extent permitted by law.
@@ -75,6 +90,7 @@ autoRotate = False  # Rotate to fit
 staples = False     # Add staple marks
 centerline = False  # Add centerline marks
 quiet = False
+quarto = False      # Four pages per side
 
 class Page(object):
     """Represents one page of the input."""
@@ -90,12 +106,13 @@ class Page(object):
 
 
 def main():
-    global sigsize, paper, autoRotate, staples, centerline, quiet
+    global sigsize, quarto, paper, autoRotate, staples, centerline, quiet
+
 
     # Get arguments with getopt
     long_opts = ['help', 'version']
     try:
-        (optlist, args) = getopt.getopt(sys.argv[1:], 'hs:p:rVSC', long_opts)
+        (optlist, args) = getopt.getopt(sys.argv[1:], 'hs:p:rVSCQ', long_opts)
         for flag, value in optlist:
             if flag in ('-h', "--help"):
                 print(usage)
@@ -105,7 +122,8 @@ def main():
                 return 0
             elif flag == '-s':
                 sigsize = getInt(value)
-                if sigsize: sigsize = round_up(sigsize, 4)
+            elif flag == '-Q':
+                quarto = True
             elif flag == '-p':
                 paper = value
             elif flag == '-r':
@@ -129,7 +147,10 @@ def main():
     if opaper is None:
         print("Paper size %s is invalid; use --help for more info" % paper, file=sys.stderr)
         return 2
-    paper = opaper[::-1]   # Switch paper to landscape
+    if not quarto:
+        paper = opaper[::-1]   # Switch paper to landscape
+    else:
+        paper = opaper
 
     try:
         ifile = open(ifilename, "r")
@@ -150,14 +171,24 @@ def main():
     pages, trailer = analyze(ifile)
     np = len(pages)
     #print(pages)
-    if sigsize is None:
-        sigsize = round_up(len(pages), 4)
 
-    # Rearrange in book order, folio.
-    # TODO: quatro
+    if sigsize is None:
+        sigsize = len(pages)
+    sigsize = round_up(sigsize, 8 if quarto else 4)
+
+    # Programming notes w.r.t. rotation:
+    # For folio printing, we'll lay out the paper in landscape and
+    # rotate the input pages as needed to fit their individual
+    # orientations.
+    # For quarto, landscape vs portrait input determines if the
+    # output pages are landscape or portrait.
+    if quarto and pagesAreLandscape(pages):
+        paper = paper[::-1]   # Switch paper to landscape
+
+    # Rearrange in book order, folio or quarto.
     # Obtain list of signatures, each of which is a list of
     # output pages.
-    signatures = rearrange(pages, sigsize)
+    signatures = rearrange(pages, sigsize, quarto)
 
     # Output the modified file
     generate(ifile, ofile, signatures, trailer, paper)
@@ -230,8 +261,16 @@ def analyze(ifile):
         page = None
     return pages, trailer
 
+def pagesAreLandscape(pages):
+    nl = np = 0
+    for page in pages:
+        pwid = page.bbox[2] - page.bbox[0]
+        phgt = page.bbox[3] - page.bbox[1]
+        if pwid >= phgt: nl += 1
+        else: np += 1
+    return nl >= np
 
-def rearrange(pages, sigsize):
+def rearrange(pages, sigsize, quarto):
     """Take the input pages, in batches of size sigsize,
     and re-arrange them in book signature order. If the last
     signature is short, reduce its size and pad with None
@@ -244,17 +283,43 @@ def rearrange(pages, sigsize):
         signature = pages[:sigsize]
         del pages[:sigsize]
         if len(signature) < sigsize:
-            sigsize = round_up(len(signature), 4)
-        for i in range(0, sigsize//2, 2):
-            opages.append(getSigPage(signature, sigsize-1-i))
-            opages.append(getSigPage(signature, i))
-            opages.append(getSigPage(signature, i+1))
-            opages.append(getSigPage(signature, sigsize-2-i))
+            sigsize = round_up(len(signature), 8 if quarto else 4)
+        if not quarto:
+            for i in range(0, sigsize//2, 2):
+                opages.append(getPage(signature, sigsize-1-i))
+                opages.append(getPage(signature, i))
+                opages.append(getPage(signature, i+1))
+                opages.append(getPage(signature, sigsize-2-i))
+        else:
+
+# 1st quarter of pages go at bottom, starting at p1,lr, alternating
+#   so p1.lr, p2.ll, p3.lr, p4.ll, etc.
+# next quarter go at top, going back in the other direction, flipped
+#   so p4.ul, p3.ur, p2.ul, p1.ur
+# next quarter go at top, going forward again, flipped
+#   so p1.ul,p2.ur,p3.ul,p4.ur
+# final quarter back at the bottom, going backwards
+#   so p4,lr, p3.ll, p2.lr, p1.ll
+
+            s2 = sigsize//2
+            for i in range(0, sigsize//4, 2):
+                # front side, ll,lr,ul,ur
+                opages.append(getPage(signature, sigsize-1-i))
+                opages.append(getPage(signature, i))
+                opages.append(getPage(signature, s2+i))
+                opages.append(getPage(signature, s2-1-i))
+                # back side, ll,lr,ul,ur
+                opages.append(getPage(signature, i+1))
+                opages.append(getPage(signature, sigsize-2-i))
+                opages.append(getPage(signature, s2-2-i))
+                opages.append(getPage(signature, s2+1+i))
+
         signatures.append(opages)
     return signatures
 
-def getSigPage(signature, idx):
-    return signature[idx] if idx < len(signature) else None
+def getPage(pages, idx):
+    """Return an item from the list, or None if out of bounds."""
+    return pages[idx] if idx < len(pages) else None
 
 PROLOG = """
 % Begin material added by ps2book.py:
@@ -317,11 +382,17 @@ def generate(ifile, ofile, signatures, trailer, paper):
     # Generate output 2-by-2
     for pages in signatures:
         np = len(pages)
-        for i in range(0, np, 2):
-            isfirst = i==0
-            islast = i >= np-2
-            generatePage(ifile, ofile, pages[i:i+2], i//2+1, paper,
-                isfirst, islast)
+        if not quarto:
+            for i in range(0, np, 2):
+                isfirst = i==0
+                islast = i >= np-2
+                generatePage(ifile, ofile, pages[i:i+2], i//2+1, paper,
+                    isfirst, islast)
+        else:
+            for i in range(0, np, 4):
+                isfirst = i==0
+                generateQuarto(ifile, ofile, pages[i:i+4], i//4+1, paper,
+                    isfirst)
 
     if trailer:
         copyTrailer(ifile, ofile, trailer)
@@ -336,8 +407,9 @@ def generateProlog(ifile, ofile, signatures, paper):
     print("%%%%HiResBoundingBox: 0 0 %.2f %.2f" % paper, file=ofile)
     print("%%Creator: ps2book.py", file=ofile)
     print("%%LanguageLevel: 2", file=ofile)
-    np = sum(len(pages) for pages in signatures)
-    print("%%%%Pages: %d 0" % (np//2), file=ofile)
+    np = sum(len(pages) for pages in signatures)    # number of logical pages
+    pp = np//2 if not quarto else np//4             # number of physical pages
+    print("%%%%Pages: %d 0" % pp, file=ofile)
     print("%%EndComments", file=ofile)
     print("%%BeginProlog", file=ofile)
 
@@ -365,8 +437,8 @@ def copyProlog(ifile, ofile):
 
 
 def generatePage(ifile, ofile, pages, pageno, paper, isfirst, islast):
-    p0 = pages[0] if len(pages) > 0 else None
-    p1 = pages[1] if len(pages) > 1 else None
+    p0 = getPage(pages, 0)
+    p1 = getPage(pages, 1)
     print('%%%%Page: "(%d,%d)" %d' % \
         (p0.pageno if p0 else 0,
          p1.pageno if p1 else 0,
@@ -389,11 +461,14 @@ def generatePage(ifile, ofile, pages, pageno, paper, isfirst, islast):
     print("showpage\n", file=ofile)
 
 
-def halfpage(ifile, ofile, page, pbox):
+def halfpage(ifile, ofile, page, pbox, qrotate=False):
     """Display this input page in the given bounding box."""
     # We'll be rotating 90 degrees and also scaling down. Comparing
     # to the output of psnup, it looks like we can leave the original
     # %%PageBoundingBox intact.
+    # qrotate says to rotate the page within it's 1/4 section.
+    if qrotate:
+        pbox = (pbox[2],pbox[3],pbox[0],pbox[1])
     pwid = pbox[2] - pbox[0]
     phgt = pbox[3] - pbox[1]
     bbox = page.bbox
@@ -411,7 +486,7 @@ def halfpage(ifile, ofile, page, pbox):
     else:
         sx = pwid / wid
         sy = phgt / hgt
-        scale = min(sx, sy)
+        scale = min(sx, sy) if sx>=0 else max(sx,sy)
         # In theory, one of these should be 0, and the other >0
         dx = (pwid - wid*scale)/2
         dy = (phgt - hgt*scale)/2
@@ -421,6 +496,8 @@ def halfpage(ifile, ofile, page, pbox):
 
     print("%.5f %.5f translate" % (dx+pbox[0],dy+pbox[1]), file=ofile)
     print("%.5f %.5f scale" % (scale, scale), file=ofile)
+#    if qrotate:
+#        print("120 rotate", file=ofile)
     if doRotate:
         print("90 rotate", file=ofile)
 
@@ -445,6 +522,41 @@ def halfpage(ifile, ofile, page, pbox):
 
     print("PS2BookSaved restore", file=ofile)
     print(file=ofile)
+
+def generateQuarto(ifile, ofile, pages, pageno, paper, isfirst):
+    p0 = getPage(pages, 0)
+    p1 = getPage(pages, 1)
+    p2 = getPage(pages, 2)
+    p3 = getPage(pages, 3)
+    print('%%%%Page: "(%d,%d,%d,%d)" %d' % \
+        (p0.pageno if p0 else 0,
+         p1.pageno if p1 else 0,
+         p2.pageno if p2 else 0,
+         p3.pageno if p3 else 0,
+         pageno), file=ofile)
+    #print("BeginEPSF", file=ofile)
+
+    pwid = paper[0]
+    phgt = paper[1]
+    if p0:
+        halfpage(ifile, ofile, p0, [0, 0, pwid/2, phgt/2], False)
+    if p1:
+        halfpage(ifile, ofile, p1, [pwid/2, 0, pwid, phgt/2], False)
+    if p2:
+        halfpage(ifile, ofile, p2, [0, phgt/2, pwid/2, phgt], True)
+    if p3:
+        halfpage(ifile, ofile, p3, [pwid/2, phgt/2, pwid, phgt], True)
+
+    #print("EndEPSF", file=ofile)
+    if isfirst:
+        if staples:
+            lineInPage(ofile, (.5,.1,.5,.15), paper)
+            lineInPage(ofile, (.5,.35,.5,.4), paper)
+        if centerline:
+            lineInPage(ofile, (.5,.60,.5,.90), paper)
+            lineInPage(ofile, (.1,.5,.9,.5), paper)
+    print("showpage\n", file=ofile)
+
 
 def lineInPage(ofile, endpoints, paper=None):
     """Draw a line between the given endpoints. Endpoints are in [0 1] and so
@@ -471,6 +583,8 @@ def copyPage(ifile, ofile, page):
 
 def shouldRotate(pwid, phgt, wid, hgt):
     """True if rotating the page will help it fit the paper better."""
+    phgt = abs(phgt)
+    pwid = abs(pwid)
     return autoRotate and \
         (phgt >= pwid and wid > hgt or \
          pwid >= phgt and hgt > wid)
